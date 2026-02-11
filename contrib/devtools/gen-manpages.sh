@@ -9,10 +9,22 @@ BITCOINCLI=${BITCOINCLI:-$SRCDIR/bitcoin-cli}
 BITCOINTX=${BITCOINTX:-$SRCDIR/bitcoin-tx}
 BITCOINQT=${BITCOINQT:-$SRCDIR/qt/bitcoin-qt}
 
-[ ! -x $BITCOIND ] && echo "$BITCOIND not found or not executable." && exit 1
+[ ! -x "$BITCOIND" ] && echo "$BITCOIND not found or not executable." && exit 1
+
+cmds=""
+for cmd in "$BITCOIND" "$BITCOINCLI" "$BITCOINTX" "$BITCOINQT"; do
+  if [ -x "$cmd" ]; then
+    cmds="$cmds $cmd"
+  else
+    echo "Skipping $cmd: not found or not executable."
+  fi
+done
+
+[ -z "$cmds" ] && echo "No binaries found, nothing to do." && exit 1
 
 # The autodetected version git tag can screw up manpage output a little bit
-BTCVER=($($BITCOINCLI --version | head -n1 | awk -F'[ -]' '{ print $6, $7 }'))
+BTCVERSTR=$($BITCOIND --version | head -n1 | awk -F'[ -]' '{ print $6 }')
+BTCGITSUFFIX=$($BITCOIND --version | head -n1 | awk -F'[ -]' '{ print $7 }')
 
 # Create a footer file with copyright content.
 # This gets autodetected fine for bitcoind if --version-string is not set,
@@ -20,10 +32,12 @@ BTCVER=($($BITCOINCLI --version | head -n1 | awk -F'[ -]' '{ print $6, $7 }'))
 echo "[COPYRIGHT]" > footer.h2m
 $BITCOIND --version | sed -n '1!p' >> footer.h2m
 
-for cmd in $BITCOIND $BITCOINCLI $BITCOINTX $BITCOINQT; do
+for cmd in $cmds; do
   cmdname="${cmd##*/}"
-  help2man -N --version-string=${BTCVER[0]} --include=footer.h2m -o ${MANDIR}/${cmdname}.1 ${cmd}
-  sed -i "s/\\\-${BTCVER[1]}//g" ${MANDIR}/${cmdname}.1
+  help2man -N --version-string="$BTCVERSTR" --include=footer.h2m -o "${MANDIR}/${cmdname}.1" "$cmd"
+  if [ -n "$BTCGITSUFFIX" ]; then
+    sed -i "s/\\\-$BTCGITSUFFIX//g" "${MANDIR}/${cmdname}.1"
+  fi
 done
 
 rm -f footer.h2m
